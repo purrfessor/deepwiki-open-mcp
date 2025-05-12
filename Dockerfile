@@ -81,7 +81,7 @@ python -m api.main --port 9781 &\n\
 \n\
 # Wait for API to be available\n\
 echo "Waiting for API to be available..."\n\
-until curl -s http://localhost:9781/ > /dev/null; do\n\
+until curl -s http://localhost:8001/ > /dev/null; do\n\
   echo -n "."\n\
   sleep 1\n\
 done\n\
@@ -90,7 +90,7 @@ echo "API is up and running."\n\
 # Start Next.js with explicit port configuration\n\
 echo "Starting Next.js server on port 9782..."\n\
 # Explicitly set these environment variables to ensure Next.js uses the correct port\n\
-export PORT=9782\n\
+export PORT=8002\n\
 export NEXT_PUBLIC_PORT=9782\n\
 export HOSTNAME=0.0.0.0\n\
 # Create a Node.js script to update the port\n\
@@ -105,7 +105,7 @@ app.prepare().then(() => {\n\
   createServer((req, res) => {\n\
     const parsedUrl = parse(req.url, true);\n\
     handle(req, res, parsedUrl);\n\
-  }).listen(9782, \"0.0.0.0\", (err) => {\n\
+  }).listen(8002, \"0.0.0.0\", (err) => {\n\
     if (err) throw err;\n\
     console.log(\"> Ready on http://0.0.0.0:9782\");\n\
   });\n\
@@ -118,10 +118,10 @@ wait -n\n\
 exit $?' > /app/start.sh && chmod +x /app/start.sh
 
 # Set environment variables
-ENV PORT=9781
+ENV PORT=8001
 ENV NEXT_PUBLIC_PORT=9782
 ENV NODE_ENV=production
-ENV SERVER_BASE_URL=http://localhost:9781
+ENV SERVER_BASE_URL=http://localhost:8001
 
 # Create empty .env file (will be overridden if one exists at runtime)
 RUN touch .env

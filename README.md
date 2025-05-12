@@ -97,16 +97,16 @@ yarn dev
 
 DeepWiki uses the following non-standard ports by default to avoid conflicts with other applications:
 
-- **API Server**: 9781 (previously 8001)
+- **API Server**: 8001 (previously 8001)
 - **Next.js Frontend**: 9782 (previously 3000)
-- **MCP Server**: 9783 (previously 8002)
+- **MCP Server**: 8003 (previously 8002)
 
 These port settings can be customized by changing the values in your `.env` file:
 
 ```
-PORT=9781               # API port
-NEXT_PUBLIC_PORT=9782   # Next.js port
-MCP_PORT=9783           # MCP server port
+PORT=8001               # API port (internal)
+NEXT_PUBLIC_PORT=9782   # Next.js port (external)
+MCP_PORT=8003           # MCP server port (internal)
 ```
 
 ## 🔍 How It Works

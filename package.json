@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack -p 9782",
+    "dev": "next dev --turbopack -p 8002",
     "build": "next build",
-    "start": "next start -p 9782",
+    "start": "next start -p 8002",
     "lint": "next lint"
   },
   "dependencies": {
@@ -37,7 +37,7 @@
   "overrides": {
     "next": {
       "devServer": {
-        "port": 9782
+        "port": 8002
       }
     }
   }

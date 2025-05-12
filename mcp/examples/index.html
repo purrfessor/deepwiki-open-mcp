@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepWiki MCP Client Example</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        label {
+            display: block;
+            margin-top: 15px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            margin-top: 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #response {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 200px;
+            white-space: pre-wrap;
+        }
+        .options {
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+        }
+        .options label {
+            margin-top: 0;
+            margin-right: 20px;
+            font-weight: normal;
+            display: flex;
+            align-items: center;
+        }
+        .options input[type="checkbox"] {
+            width: auto;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>DeepWiki MCP Client Example</h1>
+    <p>This example demonstrates how to use the DeepWiki MCP API to query a repository.</p>
+
+    <div>
+        <label for="repository">Repository URL:</label>
+        <input type="text" id="repository" placeholder="https://github.com/AsyncFuncAI/deepwiki-open"
+               value="https://github.com/AsyncFuncAI/deepwiki-open">
+
+        <label for="question">Question:</label>
+        <textarea id="question" placeholder="How do I use the EmbeddingBuilder class?"></textarea>
+
+        <div class="options">
+            <label>
+                <input type="checkbox" id="stream" checked>
+                Stream response
+            </label>
+        </div>
+
+        <button id="submit">Ask Question</button>
+    </div>
+
+    <div>
+        <label for="response">Response:</label>
+        <div id="response">(Response will appear here)</div>
+    </div>
+
+    <script src="mcp_client.js"></script>
+</body>
+</html>
