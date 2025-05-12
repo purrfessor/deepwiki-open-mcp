@@ -4,13 +4,45 @@ services:
   deepwiki:
     build: .
     ports:
-      - "${PORT:-8001}:${PORT:-8001}"  # API port
-      - "3000:3000"  # Next.js port
+      - "9781:9781"  # API port
+      - "9782:3000"  # Next.js port (Container runs on 3000)
     env_file:
       - .env
     environment:
-      - PORT=${PORT:-8001}
+      - PORT=9781
+      - NEXT_PUBLIC_PORT=9782
       - NODE_ENV=production
-      - SERVER_BASE_URL=http://localhost:${PORT:-8001}
+      - SERVER_BASE_URL=http://localhost:9781
     volumes:
       - ~/.adalflow:/root/.adalflow  # Persist repository and embedding data
+    networks:
+      - deepwiki_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9781/"]
+      interval: 5s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  mcp:
+    build:
+      context: .
+      dockerfile: mcp/Dockerfile
+    ports:
+      - "9783:9783"  # MCP port
+    env_file:
+      - .env
+    environment:
+      - MCP_PORT=9783
+      - DEEPWIKI_API_HOST=http://deepwiki:9781
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      deepwiki:
+        condition: service_healthy
+    networks:
+      - deepwiki_network
+    restart: unless-stopped
+
+networks:
+  deepwiki_network:
+    driver: bridge

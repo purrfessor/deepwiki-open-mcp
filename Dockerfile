@@ -11,6 +11,8 @@ FROM node_base AS node_builder
 WORKDIR /app
 COPY --from=node_deps /app/node_modules ./node_modules
 COPY --exclude=./api . .
+# Set port explicitly for Next.js build
+ENV PORT=9782
 RUN NODE_ENV=production npm run build
 
 FROM python:3.11-slim AS py_deps
@@ -51,7 +53,7 @@ COPY --from=node_builder /app/.next/standalone ./
 COPY --from=node_builder /app/.next/static ./.next/static
 
 # Expose the port the app runs on
-EXPOSE ${PORT:-8001} 3000
+EXPOSE 9781 9782
 
 # Create a script to run both backend and frontend
 RUN echo '#!/bin/bash\n\
@@ -59,6 +61,12 @@ RUN echo '#!/bin/bash\n\
 if [ -f .env ]; then\n\
   export $(grep -v "^#" .env | xargs -r)\n\
 fi\n\
+\n\
+# Print environment variables for debugging\n\
+echo "Starting DeepWiki with the following configuration:"\n\
+echo "API PORT: ${PORT:-9781}"\n\
+echo "NEXT.JS PORT: ${NEXT_PUBLIC_PORT:-9782}"\n\
+echo "SERVER_BASE_URL: ${SERVER_BASE_URL:-http://localhost:9781}"\n\
 \n\
 # Check for required environment variables\n\
 if [ -z "$OPENAI_API_KEY" ] || [ -z "$GOOGLE_API_KEY" ]; then\n\
@@ -68,18 +76,58 @@ if [ -z "$OPENAI_API_KEY" ] || [ -z "$GOOGLE_API_KEY" ]; then\n\
 fi\n\
 \n\
 # Start the API server in the background with the configured port\n\
-python -m api.main --port ${PORT:-8001} &\n\
-PORT=3000 HOSTNAME=0.0.0.0 node server.js &\n\
+echo "Starting API server on port 9781..."\n\
+python -m api.main --port 9781 &\n\
+\n\
+# Wait for API to be available\n\
+echo "Waiting for API to be available..."\n\
+until curl -s http://localhost:9781/ > /dev/null; do\n\
+  echo -n "."\n\
+  sleep 1\n\
+done\n\
+echo "API is up and running."\n\
+\n\
+# Start Next.js with explicit port configuration\n\
+echo "Starting Next.js server on port 9782..."\n\
+# Explicitly set these environment variables to ensure Next.js uses the correct port\n\
+export PORT=9782\n\
+export NEXT_PUBLIC_PORT=9782\n\
+export HOSTNAME=0.0.0.0\n\
+# Create a Node.js script to update the port\n\
+echo "const { createServer } = require(\"http\");\n\
+const { parse } = require(\"url\");\n\
+const next = require(\"next\");\n\
+\n\
+const app = next({ dev: false, dir: __dirname });\n\
+const handle = app.getRequestHandler();\n\
+\n\
+app.prepare().then(() => {\n\
+  createServer((req, res) => {\n\
+    const parsedUrl = parse(req.url, true);\n\
+    handle(req, res, parsedUrl);\n\
+  }).listen(9782, \"0.0.0.0\", (err) => {\n\
+    if (err) throw err;\n\
+    console.log(\"> Ready on http://0.0.0.0:9782\");\n\
+  });\n\
+});" > custom-server.js\n\
+\n\
+node custom-server.js &\n\
+\n\
+# Wait for any child process to exit\n\
 wait -n\n\
 exit $?' > /app/start.sh && chmod +x /app/start.sh
 
 # Set environment variables
-ENV PORT=8001
+ENV PORT=9781
+ENV NEXT_PUBLIC_PORT=9782
 ENV NODE_ENV=production
-ENV SERVER_BASE_URL=http://localhost:${PORT:-8001}
+ENV SERVER_BASE_URL=http://localhost:9781
 
 # Create empty .env file (will be overridden if one exists at runtime)
 RUN touch .env
+
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y curl && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Command to run the application
 CMD ["/app/start.sh"]

@@ -24,6 +24,7 @@
 - **Ask Feature**: Chat with your repository using RAG-powered AI to get accurate answers
 - **DeepResearch**: Multi-turn research process that thoroughly investigates complex topics
 - **Multiple Model Providers**: Support for Google Gemini, OpenAI, OpenRouter, and local Ollama models
+- **MCP Interface**: Multi-Agent Communication Protocol server for AI agent integration
 
 ## 🚀 Quick Start (Super Easy!)
 
@@ -87,10 +88,26 @@ yarn dev
 
 #### Step 4: Use DeepWiki!
 
-1. Open [http://localhost:3000](http://localhost:3000) in your browser
+1. Open [http://localhost:9782](http://localhost:9782) in your browser (default port changed from 3000 to 9782)
 2. Enter a GitHub, GitLab, or Bitbucket repository (like `https://github.com/openai/codex`, `https://github.com/microsoft/autogen`, `https://gitlab.com/gitlab-org/gitlab`, or `https://bitbucket.org/redradish/atlassian_app_versions`)
 3. For private repositories, click "+ Add access tokens" and enter your GitHub or GitLab personal access token
 4. Click "Generate Wiki" and watch the magic happen!
+
+## 📋 Port Configuration
+
+DeepWiki uses the following non-standard ports by default to avoid conflicts with other applications:
+
+- **API Server**: 9781 (previously 8001)
+- **Next.js Frontend**: 9782 (previously 3000)
+- **MCP Server**: 9783 (previously 8002)
+
+These port settings can be customized by changing the values in your `.env` file:
+
+```
+PORT=9781               # API port
+NEXT_PUBLIC_PORT=9782   # Next.js port
+MCP_PORT=9783           # MCP server port
+```
 
 ## 🔍 How It Works
 
@@ -103,6 +120,7 @@ DeepWiki uses AI to:
 5. Organize everything into a structured wiki
 6. Enable intelligent Q&A with the repository through the Ask feature
 7. Provide in-depth research capabilities with DeepResearch
+8. Expose MCP interface for external AI agents to query repository knowledge
 
 ```mermaid
 graph TD
@@ -129,6 +147,10 @@ graph TD
     F --> G
     G --> H[Interactive DeepWiki]
 
+    D --> I[MCP Interface]
+    I --> J[External AI Agents]
+    J --> I
+
     classDef process stroke-width:2px;
     classDef data stroke-width:2px;
     classDef result stroke-width:2px;
@@ -136,8 +158,8 @@ graph TD
 
     class A,D data;
     class AA,M decision;
-    class B,C,E,F,G,AB,E1,E2,E3,E4 process;
-    class H result;
+    class B,C,E,F,G,AB,E1,E2,E3,E4,I process;
+    class H,J result;
 ```
 
 ## 🛠️ Project Structure
@@ -150,6 +172,11 @@ deepwiki/
 │   ├── rag.py            # Retrieval Augmented Generation
 │   ├── data_pipeline.py  # Data processing utilities
 │   └── requirements.txt  # Python dependencies
+│
+├── mcp/                  # MCP server
+│   ├── main.py           # MCP server entry point
+│   ├── server.py         # MCP server implementation
+│   └── requirements.txt  # MCP server dependencies
 │
 ├── src/                  # Frontend Next.js app
 │   ├── app/              # Next.js app directory
@@ -241,6 +268,8 @@ The OpenAI Client's base_url configuration is designed primarily for enterprise 
 | `OPENROUTER_API_KEY` | OpenRouter API key for alternative models | No | Required only if you want to use OpenRouter models |
 | `PORT` | Port for the API server (default: 8001) | No | If you host API and frontend on the same machine, make sure change port of `SERVER_BASE_URL` accordingly |
 | `SERVER_BASE_URL` | Base URL for the API server (default: http://localhost:8001) | No |
+| `MCP_PORT` | Port for the MCP server (default: 8002) | No | Used for the MCP server that provides an interface for external AI agents |
+| `DEEPWIKI_API_HOST` | DeepWiki API host for MCP (default: http://deepwiki:8001) | No | Used by the MCP server to connect to the DeepWiki API |
 
 If you're not using ollama mode, you need to configure an OpenAI API key for embeddings. Other API keys are only required when configuring and using models from the corresponding providers.
 
@@ -430,3 +459,42 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## ⭐ Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=AsyncFuncAI/deepwiki-open&type=Date)](https://star-history.com/#AsyncFuncAI/deepwiki-open&Date)
+
+## 🔌 MCP Server
+
+The Multi-Agent Communication Protocol (MCP) server provides a clean interface for external AI coding agents to interact with DeepWiki's RAG system:
+
+- **Agent Integration**: Enables AI coding assistants like Cursor to query DeepWiki directly
+- **Model Context Protocol**: Implements the official [MCP standard](https://github.com/modelcontextprotocol/python-sdk) for AI agent communication
+- **Context-Aware**: Provides repository-specific answers based on the code
+- **Conversation History**: Maintains context for multi-turn interactions
+
+### MCP Implementation
+
+The MCP server exposes a primary tool through the Model Context Protocol:
+
+```python
+# Query a repository (Python example with MCP SDK)
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+async with streamablehttp_client("http://localhost:8002") as (read, write, _):
+    async with ClientSession(read, write) as session:
+        await session.initialize()
+        result = await session.call_tool("query_repository", {
+            "repo_url": "https://github.com/AsyncFuncAI/deepwiki-open",
+            "query": "How do I use the EmbeddingBuilder class?"
+        })
+```
+
+For detailed API documentation, see the [MCP README](./mcp/README.md).
+
+### Using MCP with AI Agents
+
+AI coding agents can use the MCP server to:
+
+1. **Ask questions** about the repository's structure, components, and patterns
+2. **Get context-aware answers** powered by DeepWiki's RAG system
+3. **Maintain conversation context** for follow-up questions
+
+This enables more intelligent coding assistance when working on complex codebases.
