@@ -57,22 +57,22 @@ EXPOSE 9781 9782
 
 # Create a script to run both backend and frontend
 RUN echo '#!/bin/bash\n\
-# Load environment variables from .env file if it exists\n\
+set -e # Exit immediately if a command exits with a non-zero status.\n\
+# Source .env file if it exists\n\
 if [ -f .env ]; then\n\
   export $(grep -v "^#" .env | xargs -r)\n\
 fi\n\
 \n\
 # Print environment variables for debugging\n\
 echo "Starting DeepWiki with the following configuration:"\n\
-echo "API PORT: ${PORT:-9781}"\n\
-echo "NEXT.JS PORT: ${NEXT_PUBLIC_PORT:-9782}"\n\
-echo "SERVER_BASE_URL: ${SERVER_BASE_URL:-http://localhost:9781}"\n\
+echo "API PORT (deepwiki python backend): ${PORT:-9781}"\n\
+echo "NEXT.JS PORT (deepwiki frontend): ${NEXT_PUBLIC_PORT:-9782}"\n\
+echo "SERVER_BASE_URL (for Next.js to call API): ${SERVER_BASE_URL:-http://localhost:9781}"\n\
 \n\
 # Check for required environment variables\n\
 if [ -z "$OPENAI_API_KEY" ] || [ -z "$GOOGLE_API_KEY" ]; then\n\
   echo "Warning: OPENAI_API_KEY and/or GOOGLE_API_KEY environment variables are not set."\n\
-  echo "These are required for DeepWiki to function properly."\n\
-  echo "You can provide them via a mounted .env file or as environment variables when running the container."\n\
+  echo "DeepWiki may not function correctly without them."\n\
 fi\n\
 \n\
 # Start the API server in the background with the configured port\n\
@@ -81,7 +81,7 @@ python -m api.main --port 9781 &\n\
 \n\
 # Wait for API to be available\n\
 echo "Waiting for API to be available..."\n\
-until curl -s http://localhost:8001/ > /dev/null; do\n\
+until curl -sf http://localhost:9781/ > /dev/null; do\n\
   echo -n "."\n\
   sleep 1\n\
 done\n\
@@ -89,39 +89,20 @@ echo "API is up and running."\n\
 \n\
 # Start Next.js with explicit port configuration\n\
 echo "Starting Next.js server on port 9782..."\n\
-# Explicitly set these environment variables to ensure Next.js uses the correct port\n\
-export PORT=8002\n\
-export NEXT_PUBLIC_PORT=9782\n\
-export HOSTNAME=0.0.0.0\n\
-# Create a Node.js script to update the port\n\
-echo "const { createServer } = require(\"http\");\n\
-const { parse } = require(\"url\");\n\
-const next = require(\"next\");\n\
-\n\
-const app = next({ dev: false, dir: __dirname });\n\
-const handle = app.getRequestHandler();\n\
-\n\
-app.prepare().then(() => {\n\
-  createServer((req, res) => {\n\
-    const parsedUrl = parse(req.url, true);\n\
-    handle(req, res, parsedUrl);\n\
-  }).listen(8002, \"0.0.0.0\", (err) => {\n\
-    if (err) throw err;\n\
-    console.log(\"> Ready on http://0.0.0.0:9782\");\n\
-  });\n\
-});" > custom-server.js\n\
-\n\
-node custom-server.js &\n\
+export PORT=9782 # Next.js standalone server listens to this PORT env var\n\
+export HOSTNAME=0.0.0.0 # Listen on all interfaces\n\
+# SERVER_BASE_URL is already set from .env or Dockerfile ENV, needed by the Next.js app at runtime\n\
+node server.js &\n\
 \n\
 # Wait for any child process to exit\n\
 wait -n\n\
 exit $?' > /app/start.sh && chmod +x /app/start.sh
 
 # Set environment variables
-ENV PORT=8001
+ENV PORT=9781
 ENV NEXT_PUBLIC_PORT=9782
 ENV NODE_ENV=production
-ENV SERVER_BASE_URL=http://localhost:8001
+ENV SERVER_BASE_URL=http://localhost:9781
 
 # Create empty .env file (will be overridden if one exists at runtime)
 RUN touch .env

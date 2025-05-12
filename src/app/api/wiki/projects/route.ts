@@ -12,7 +12,7 @@ interface ApiProcessedProject {
 }
 
 // Ensure this matches your Python backend configuration
-const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_HOST || 'http://localhost:8001';
+const PYTHON_BACKEND_URL = process.env.PYTHON_BACKEND_HOST || 'http://localhost:9781';
 const PROJECTS_API_ENDPOINT = `${PYTHON_BACKEND_URL}/api/processed_projects`;
 
 export async function GET() {
@@ -50,4 +50,4 @@ export async function GET() {
       { status: 503 } // Service Unavailable
     );
   }
-} 
+}
