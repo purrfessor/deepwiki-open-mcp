@@ -487,7 +487,7 @@ async with streamablehttp_client("http://localhost:8002") as (read, write, _):
         })
 ```
 
-For detailed API documentation, see the [MCP README](./mcp/README.md).
+For detailed API documentation, see the [MCP README](./deepwiki_mcp/README.md).
 
 ### Using MCP with AI Agents
 
