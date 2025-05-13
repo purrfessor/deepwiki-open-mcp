@@ -79,7 +79,7 @@ To use DeepWiki MCP with Cursor:
 1. In Cursor, open settings (`Cmd+,` on Mac, `Ctrl+,` on Windows/Linux)
 2. Go to "Integrations" > "MCP Servers"
 3. Add a new MCP server with the following configuration:
-   ```json
+```json
 {
   "mcpServers": {
     "deepwiki": {
@@ -96,8 +96,23 @@ To use DeepWiki MCP with Cursor:
     }
   }
 }
-   ```
+```
 4. To test the connection, ask Cursor a question about a repository, like: "Using DeepWiki, can you explain how the agno-agi/agno repository works?"
+
+### Adding to Cursor User Rule
+
+To enable AI assistants to use DeepWiki MCP effectively, add the following to your [Cursor User Rule](https://docs.cursor.com/context/rules):
+
+```
+# MCP
+Here is a list of available MCPs and what to use them for.
+
+## deepwiki
+Use deepwiki MCP to chat with an AI agent that is built with RAG on top of a repository code embeddings, meaning this agent knows everything about the code of the repository and can provide answers to questions like "how to implement a feature like N using this library?", "how does a class N work?", etc.
+Don't use deep research by default, but if you already tried regular questions and it didn't help to solve the problem, or if you're implementing a huge feature, use the deep research.
+```
+
+This tells the AI assistant when and how to use the DeepWiki MCP in the most effective way.
 
 ## 🧰 Tools Reference
 
