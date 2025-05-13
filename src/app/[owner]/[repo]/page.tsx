@@ -3,7 +3,7 @@
 
 import React, { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { FaExclamationTriangle, FaBookOpen, FaGithub, FaGitlab, FaBitbucket, FaDownload, FaFileExport, FaHome, FaFolder, FaSync, FaChevronUp, FaChevronDown, FaComments, FaTimes } from 'react-icons/fa';
+import { FaExclamationTriangle, FaBookOpen, FaDownload, FaFileExport, FaHome, FaFolder, FaSync, FaChevronUp, FaChevronDown, FaTimes, FaComments } from 'react-icons/fa';
 import Link from 'next/link';
 import ThemeToggle from '@/components/theme-toggle';
 import Markdown from '@/components/Markdown';
@@ -14,35 +14,11 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { RepoInfo } from '@/types/repoinfo';
 import { extractUrlDomain, extractUrlPath } from '@/utils/urlDecoder';
 import getRepoUrl from '@/utils/getRepoUrl';
-// Define the WikiSection and WikiStructure types directly in this file
-// since the imported types don't have the sections and rootSections properties
-interface WikiSection {
-  id: string;
-  title: string;
-  pages: string[];
-  subsections?: string[];
-}
-
-interface WikiPage {
-  id: string;
-  title: string;
-  content: string;
-  filePaths: string[];
-  importance: 'high' | 'medium' | 'low';
-  relatedPages: string[];
-  parentId?: string;
-  isSection?: boolean;
-  children?: string[];
-}
-
-interface WikiStructure {
-  id: string;
-  title: string;
-  description: string;
-  pages: WikiPage[];
-  sections: WikiSection[];
-  rootSections: string[];
-}
+import { WikiStructure } from '@/types/wiki/wikistructure';
+import { WikiPage } from '@/types/wiki/wikipage';
+import WikiSection from '@/types/wiki/wikisection';
+import { RepoIcon } from '@/components/RepoIcon';
+import { SupportedPlatform } from '@/types/SupportedPlatform';
 
 // Add CSS styles for wiki with Japanese aesthetic
 const wikiStyles = `
@@ -164,6 +140,17 @@ const createBitbucketHeaders = (bitbucketToken: string): HeadersInit => {
   return headers;
 };
 
+const createGiteaHeaders = (giteaToken: string): HeadersInit => {
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    'accept': 'application/json',
+  };
+  if (giteaToken) {
+    headers['Authorization'] = `token ${giteaToken}`;
+  }
+
+  return headers;
+}
 
 export default function RepoWikiPage() {
   // Get route parameters and search params
@@ -176,7 +163,7 @@ export default function RepoWikiPage() {
 
   // Extract tokens from search params
   const token = searchParams.get('token') || '';
-  const repoType = searchParams.get('type') || 'github';
+  const repoType: SupportedPlatform | 'local' = (searchParams.get('type') as SupportedPlatform | 'local') || 'github';
   const localPath = searchParams.get('local_path') ? decodeURIComponent(searchParams.get('local_path') || '') : undefined;
   const repoUrl = searchParams.get('repo_url') ? decodeURIComponent(searchParams.get('repo_url') || '') : undefined;
   const providerParam = searchParams.get('provider') || '';
@@ -301,7 +288,7 @@ export default function RepoWikiPage() {
         const repoUrl = getRepoUrl(repoInfo);
 
         // Create the prompt content - simplified to avoid message dialogs
- const promptContent =
+        const promptContent =
 `You are an expert technical writer and software architect.
 Your task is to generate a comprehensive and accurate technical wiki page in Markdown format about a specific feature, system, or module within a given software project.
 
@@ -504,7 +491,7 @@ Remember:
         type: repoInfo.type,
         messages: [{
           role: 'user',
-content: `Analyze this GitHub repository ${owner}/${repo} and create a wiki structure for it.
+          content: `Analyze this GitHub repository ${owner}/${repo} and create a wiki structure for it.
 
 1. The complete file tree of the project:
 <file_tree>
@@ -1134,6 +1121,68 @@ IMPORTANT:
           console.warn('Could not fetch Bitbucket README.md, continuing with empty README', err);
         }
       }
+      else if (repoInfo.type === 'gitea') {
+        const repoPath = extractUrlPath(repoInfo.repoUrl ?? '') ?? `${owner}/${repo}`;
+        const [ownerName, repoName] = repoPath.split('/');
+        const encodedOwner = encodeURIComponent(ownerName);
+        const encodedRepo = encodeURIComponent(repoName);
+        const baseApiUrl = extractUrlDomain(repoInfo.repoUrl ?? 'https://gitea.com') ?? 'https://gitea.com';
+        const headers = createGiteaHeaders(token);
+      
+        let fileTreeData = '';
+        let defaultBranch = '';
+        let apiErrorDetails = '';
+      
+        try {
+          // Get repository info to find default branch
+          const repoInfoUrl = `${baseApiUrl}/api/v1/repos/${encodedOwner}/${encodedRepo}`;
+          const repoRes = await fetch(repoInfoUrl, { headers });
+          const repoText = await repoRes.text();
+      
+          if (repoRes.ok) {
+            const repoData = JSON.parse(repoText);
+            defaultBranch = repoData.default_branch;
+      
+            // List all files in the repo at the default branch
+            const treeUrl = `${baseApiUrl}/api/v1/repos/${encodedOwner}/${encodedRepo}/git/trees/${defaultBranch}?recursive=1`;
+            const treeRes = await fetch(treeUrl, { headers });
+            const treeText = await treeRes.text();
+      
+            if (treeRes.ok) {
+              const treeData = JSON.parse(treeText);
+              fileTreeData = (treeData.tree || [])
+                .filter((item: { type: string; path: string }) => item.type === 'blob')
+                .map((item: { path: string }) => item.path)
+                .join('\n');
+            } else {
+              apiErrorDetails = `Status: ${treeRes.status}, Response: ${treeText}`;
+            }
+      
+          } else {
+            apiErrorDetails = `Status: ${repoRes.status}, Response: ${repoText}`;
+          }
+      
+          // Optionally fetch README.md content
+          const readmeUrl = `${baseApiUrl}/api/v1/repos/${encodedOwner}/${encodedRepo}/contents/README.md?ref=${defaultBranch}`;
+          const readmeRes = await fetch(readmeUrl, { headers });
+          const readmeText = await readmeRes.text();
+      
+          if (readmeRes.ok) {
+            const readmeData = JSON.parse(readmeText);
+            readmeContent = atob(readmeData.content);
+          } else {
+            console.warn(`Could not fetch Gitea README.md, status: ${readmeRes.status}`);
+          }
+      
+        } catch (err) {
+          console.error("Error fetching Gitea repository info:", err);
+          if (apiErrorDetails) {
+            throw new Error(`Could not fetch Gitea repository structure. API Error: ${apiErrorDetails}`);
+          } else {
+            throw new Error('Could not fetch Gitea repository structure. Repository might not exist, be empty or private.');
+          }
+        }
+      }
 
       // Now determine the wiki structure
       await determineWikiStructure(fileTreeData, readmeContent, owner, repo);
@@ -1658,13 +1707,7 @@ IMPORTANT:
                   </div>
                 ) : (
                   <>
-                    {repoInfo.type === 'github' ? (
-                      <FaGithub className="mr-2" />
-                    ) : repoInfo.type === 'gitlab' ? (
-                      <FaGitlab className="mr-2" />
-                    ) : (
-                      <FaBitbucket className="mr-2" />
-                    )}
+                  <RepoIcon type={repoInfo.type} className="text-lg" />
                     <a
                       href={repoInfo.repoUrl ?? ''}
                       target="_blank"
@@ -1844,29 +1887,35 @@ IMPORTANT:
               onRef={(ref) => (askComponentRef.current = ref)}
             />
           </div>
+          <div className="flex justify-between items-center gap-4 text-center text-[var(--muted)] text-sm h-fit w-full bg-[var(--card-bg)] rounded-lg p-3 shadow-sm border border-[var(--border-color)]">
+            <p className="flex-1 font-serif">
+              {messages.footer?.copyright || 'DeepWiki - Generate Wiki from GitHub/Gitlab/Bitbucket/Gitea repositories'}
+            </p>
+            <ThemeToggle />
+          </div>
         </div>
-      </div>
 
-      <ModelSelectionModal
-        isOpen={isModelSelectionModalOpen}
-        onClose={() => setIsModelSelectionModalOpen(false)}
-        provider={selectedProviderState}
-        setProvider={setSelectedProviderState}
-        model={selectedModelState}
-        setModel={setSelectedModelState}
-        isCustomModel={isCustomSelectedModelState}
-        setIsCustomModel={setIsCustomSelectedModelState}
-        customModel={customSelectedModelState}
-        setCustomModel={setCustomSelectedModelState}
-        isComprehensiveView={isComprehensiveView}
-        setIsComprehensiveView={setIsComprehensiveView}
-        showFileFilters={true}
-        excludedDirs={modelExcludedDirs}
-        setExcludedDirs={setModelExcludedDirs}
-        excludedFiles={modelExcludedFiles}
-        setExcludedFiles={setModelExcludedFiles}
-        onApply={confirmRefresh}
-      />
+        <ModelSelectionModal
+          isOpen={isModelSelectionModalOpen}
+          onClose={() => setIsModelSelectionModalOpen(false)}
+          provider={selectedProviderState}
+          setProvider={setSelectedProviderState}
+          model={selectedModelState}
+          setModel={setSelectedModelState}
+          isCustomModel={isCustomSelectedModelState}
+          setIsCustomModel={setIsCustomSelectedModelState}
+          customModel={customSelectedModelState}
+          setCustomModel={setCustomSelectedModelState}
+          isComprehensiveView={isComprehensiveView}
+          setIsComprehensiveView={setIsComprehensiveView}
+          showFileFilters={true}
+          excludedDirs={modelExcludedDirs}
+          setExcludedDirs={setModelExcludedDirs}
+          excludedFiles={modelExcludedFiles}
+          setExcludedFiles={setModelExcludedFiles}
+          onApply={confirmRefresh}
+        />
+      </div>
     </div>
   );
 }
