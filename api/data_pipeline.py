@@ -11,9 +11,10 @@ import re
 import glob
 from adalflow.utils import get_adalflow_default_root_path
 from adalflow.core.db import LocalDB
-from api.config import configs
+from api.config import configs, DEFAULT_EXCLUDED_DIRS, DEFAULT_EXCLUDED_FILES
 from api.ollama_patch import OllamaDocumentProcessor
 from urllib.parse import urlparse, urlunparse, quote
+import secrets
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ def count_tokens(text: str, local_ollama: bool = False) -> int:
             encoding = tiktoken.get_encoding("cl100k_base")
         else:
             encoding = tiktoken.encoding_for_model("text-embedding-3-small")
-            
+
         return len(encoding.encode(text))
     except Exception as e:
         # Fallback to a simple approximation if tiktoken fails
@@ -80,15 +81,23 @@ def download_repo(repo_url: str, local_path: str, type: str = "github", access_t
         clone_url = repo_url
         if access_token:
             parsed = urlparse(repo_url)
-            # Determine the repository type and format the URL accordingly
+            # urlunparse reconstructs a full URL from its components:
+            # (scheme, netloc, path, params, query, fragment)
+            # This allows us to embed the access token directly into the URL's netloc part,
+            # which is commonly used for authentication in Git over HTTPS.
+
+            # Determine the repository type and format the clone URL with the access token
             if type == "github":
                 # Format: https://{token}@github.com/owner/repo.git
                 clone_url = urlunparse((parsed.scheme, f"{access_token}@{parsed.netloc}", parsed.path, '', '', ''))
             elif type == "gitlab":
-                # Format: https://oauth2:{token}@gitlab.com/owner/repo.git    
+                # Format: https://oauth2:{token}@gitlab.com/owner/repo.git
                 clone_url = urlunparse((parsed.scheme, f"oauth2:{access_token}@{parsed.netloc}", parsed.path, '', '', ''))
             elif type == "bitbucket":
                 # Format: https://{token}@bitbucket.org/owner/repo.git
+                clone_url = urlunparse((parsed.scheme, f"{access_token}@{parsed.netloc}", parsed.path, '', '', ''))
+            elif type == "gitea":
+                # Format: https://{token}@gitea.com/owner/repo.git
                 clone_url = urlunparse((parsed.scheme, f"{access_token}@{parsed.netloc}", parsed.path, '', '', ''))
             logger.info("Using access token for authentication")
 
@@ -124,7 +133,7 @@ def read_all_documents(path: str, local_ollama: bool = False, excluded_dirs: Lis
     Args:
         path (str): The root directory path.
         local_ollama (bool): Whether to use local Ollama for token counting. Default is False.
-        excluded_dirs (List[str], optional): List of directories to exclude from processing. 
+        excluded_dirs (List[str], optional): List of directories to exclude from processing.
             Overrides the default configuration if provided.
         excluded_files (List[str], optional): List of file patterns to exclude from processing.
             Overrides the default configuration if provided.
@@ -138,14 +147,29 @@ def read_all_documents(path: str, local_ollama: bool = False, excluded_dirs: Lis
                        ".jsx", ".tsx", ".html", ".css", ".php", ".swift", ".cs"]
     doc_extensions = [".md", ".txt", ".rst", ".json", ".yaml", ".yml"]
 
-    # Get excluded files and directories from config or use provided values
-    default_excluded_dirs = configs.get("file_filters", {}).get("excluded_dirs", [".venv", "node_modules"])
-    default_excluded_files = configs.get("file_filters", {}).get("excluded_files", ["package-lock.json"])
-    
-    # Use custom exclusions if provided, otherwise use defaults
-    excluded_dirs = excluded_dirs if excluded_dirs is not None else default_excluded_dirs
-    excluded_files = excluded_files if excluded_files is not None else default_excluded_files
-    
+    # Always start with default excluded directories and files
+    final_excluded_dirs = set(DEFAULT_EXCLUDED_DIRS)
+    final_excluded_files = set(DEFAULT_EXCLUDED_FILES)
+
+    # Add any additional excluded directories from config
+    if "file_filters" in configs and "excluded_dirs" in configs["file_filters"]:
+        final_excluded_dirs.update(configs["file_filters"]["excluded_dirs"])
+
+    # Add any additional excluded files from config
+    if "file_filters" in configs and "excluded_files" in configs["file_filters"]:
+        final_excluded_files.update(configs["file_filters"]["excluded_files"])
+
+    # Add any explicitly provided excluded directories and files
+    if excluded_dirs is not None:
+        final_excluded_dirs.update(excluded_dirs)
+
+    if excluded_files is not None:
+        final_excluded_files.update(excluded_files)
+
+    # Convert back to lists for compatibility
+    excluded_dirs = list(final_excluded_dirs)
+    excluded_files = list(final_excluded_files)
+
     logger.info(f"Using excluded directories: {excluded_dirs}")
     logger.info(f"Using excluded files: {excluded_files}")
 
@@ -157,8 +181,15 @@ def read_all_documents(path: str, local_ollama: bool = False, excluded_dirs: Lis
         for file_path in files:
             # Skip excluded directories and files
             is_excluded = False
-            if any(excluded in file_path for excluded in excluded_dirs):
-                is_excluded = True
+            # Check if file is in an excluded directory
+            file_path_parts = os.path.normpath(file_path).split(os.sep)
+            for excluded in excluded_dirs:
+                # Remove ./ prefix and trailing slash if present
+                clean_excluded = excluded.strip("./").rstrip("/")
+                # Check if the excluded directory is in the path components
+                if clean_excluded in file_path_parts:
+                    is_excluded = True
+                    break
             if not is_excluded and any(os.path.basename(file_path) == excluded for excluded in excluded_files):
                 is_excluded = True
             if is_excluded:
@@ -178,7 +209,7 @@ def read_all_documents(path: str, local_ollama: bool = False, excluded_dirs: Lis
 
                     # Check token count
                     token_count = count_tokens(content, local_ollama)
-                    if token_count > MAX_EMBEDDING_TOKENS:
+                    if token_count > MAX_EMBEDDING_TOKENS * 10:
                         logger.warning(f"Skipping large file {relative_path}: Token count ({token_count}) exceeds limit")
                         continue
 
@@ -203,8 +234,15 @@ def read_all_documents(path: str, local_ollama: bool = False, excluded_dirs: Lis
         for file_path in files:
             # Skip excluded directories and files
             is_excluded = False
-            if any(excluded in file_path for excluded in excluded_dirs):
-                is_excluded = True
+            # Check if file is in an excluded directory
+            file_path_parts = os.path.normpath(file_path).split(os.sep)
+            for excluded in excluded_dirs:
+                # Remove ./ prefix and trailing slash if present
+                clean_excluded = excluded.strip("./").rstrip("/")
+                # Check if the excluded directory is in the path components
+                if clean_excluded in file_path_parts:
+                    is_excluded = True
+                    break
             if not is_excluded and any(os.path.basename(file_path) == excluded for excluded in excluded_files):
                 is_excluded = True
             if is_excluded:
@@ -242,15 +280,15 @@ def read_all_documents(path: str, local_ollama: bool = False, excluded_dirs: Lis
 def prepare_data_pipeline(local_ollama: bool = False):
     """
     Creates and returns the data transformation pipeline.
-    
+
     Args:
         local_ollama (bool): Whether to use local Ollama for embedding (default: False)
-    
+
     Returns:
         adal.Sequential: The data transformation pipeline
     """
     splitter = TextSplitter(**configs["text_splitter"])
-    
+
     if local_ollama:
         # Use Ollama embedder
         embedder = adal.Embedder(
@@ -267,7 +305,7 @@ def prepare_data_pipeline(local_ollama: bool = False):
         embedder_transformer = ToEmbeddings(
             embedder=embedder, batch_size=configs["embedder"]["batch_size"]
         )
-    
+
     data_transformer = adal.Sequential(
         splitter, embedder_transformer
     )  # sequential will chain together splitter and embedder
@@ -405,6 +443,9 @@ def get_gitlab_file_content(repo_url: str, file_path: str, access_token: str = N
         # Encode file path
         encoded_file_path = quote(file_path, safe='')
 
+        # Default to 'main' branch if not specified
+        default_branch = 'main'
+
         api_url = f"{gitlab_domain}/api/v4/projects/{encoded_project_path}/repository/files/{encoded_file_path}/raw?ref={default_branch}"
         curl_cmd = ["curl", "-s"]
         if access_token:
@@ -485,7 +526,7 @@ def get_bitbucket_file_content(repo_url: str, file_path: str, access_token: str 
         )
 
         # Bitbucket API returns the raw file content directly
-        content = result.stdout.decode("utf-8") 
+        content = result.stdout.decode("utf-8")
         return content
 
     except subprocess.CalledProcessError as e:
@@ -500,10 +541,76 @@ def get_bitbucket_file_content(repo_url: str, file_path: str, access_token: str 
             elif "HTTP/1.1 500" in error_msg:
                 raise ValueError("Internal server error on Bitbucket. Please try again later.")
             else:
-                raise ValueError(f"Error fetching file content: {error_msg}")    
+                raise ValueError(f"Error fetching file content: {error_msg}")
     except Exception as e:
         raise ValueError(f"Failed to get file content: {str(e)}")
 
+def get_gitea_file_content(repo_url: str, file_path: str, branch: str = "main", access_token: str = None) -> str:
+    """
+    Retrieves the raw content of a file from a Gitea repository.
+
+    Args:
+        repo_url (str): The Gitea repository URL (e.g., "http://localhost:3000/user/repo")
+        file_path (str): Path to the file in the repo (e.g., "README.md")
+        branch (str): The branch name (default is "main")
+        access_token (str, optional): Personal access token
+
+    Returns:
+        str: The file content
+
+    Raises:
+        ValueError: If the fetch fails
+    """
+    try:
+        parsed_url = urlparse(repo_url)
+        if not parsed_url.scheme or not parsed_url.netloc:
+            raise ValueError("Not a valid Gitea repository URL")
+
+        gitea_domain = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        if parsed_url.port not in (None, 80, 443):
+            gitea_domain += f":{parsed_url.port}"
+        path_parts = parsed_url.path.strip("/").split("/")
+        if len(path_parts) < 2:
+            raise ValueError("Invalid Gitea URL format — expected something like http://localhost:3000/user/repo. Please include the owner and repository name.")
+
+        owner, repo = path_parts[0], path_parts[1].replace(".git", "")
+        encoded_file_path = quote(file_path, safe='')
+        encoded_owner = quote(owner, safe='')
+        encoded_repo = quote(repo, safe='')
+
+        api_url = f"{gitea_domain}/api/v1/repos/{encoded_owner}/{encoded_repo}/contents/{encoded_file_path}?ref={quote(branch)}"
+
+        curl_cmd = ["curl", "-s"]
+        if access_token:
+            curl_cmd.extend(["-H", f"Authorization: token {access_token}"])
+        curl_cmd.append(api_url)
+
+        logger.info(f"Fetching file content from Gitea API: {api_url}")
+        result = subprocess.run(
+            curl_cmd,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        response_json = json.loads(result.stdout.decode("utf-8"))
+
+        if "content" in response_json:
+            import base64
+            return base64.b64decode(response_json["content"]).decode("utf-8")
+        elif "message" in response_json:
+            raise ValueError(f"Gitea API error: {response_json['message']}")
+        else:
+            raise ValueError("Unexpected API response format.")
+
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr.decode('utf-8')
+        if access_token: 
+            sanitized_token = '***TOKEN***'
+            error_msg = error_msg.replace(access_token, sanitized_token) if secrets.compare_digest(access_token, access_token) else error_msg
+        raise ValueError(f"Error fetching file content: {error_msg}")
+    except Exception as e:
+        raise ValueError(f"Failed to get file content: {str(e)}")
 
 def get_file_content(repo_url: str, file_path: str, type: str = "github", access_token: str = None) -> str:
     """
@@ -526,8 +633,10 @@ def get_file_content(repo_url: str, file_path: str, type: str = "github", access
         return get_gitlab_file_content(repo_url, file_path, access_token)
     elif type == "bitbucket":
         return get_bitbucket_file_content(repo_url, file_path, access_token)
+    elif type == "gitea":
+        return get_gitea_file_content(repo_url, file_path, access_token)
     else:
-        raise ValueError("Unsupported repository URL. Only GitHub and GitLab are supported.")
+        raise ValueError("Unsupported repository URL. Only GitHub, GitLab, Bitbucket and Gitea are supported.")
 
 class DatabaseManager:
     """
@@ -539,7 +648,7 @@ class DatabaseManager:
         self.repo_url_or_path = None
         self.repo_paths = None
 
-    def prepare_database(self, repo_url_or_path: str, type: str = "github", access_token: str = None, local_ollama: bool = False, 
+    def prepare_database(self, repo_url_or_path: str, type: str = "github", access_token: str = None, local_ollama: bool = False,
                        excluded_dirs: List[str] = None, excluded_files: List[str] = None) -> List[Document]:
         """
         Create a new database from the repository.
@@ -586,19 +695,7 @@ class DatabaseManager:
             # url
             if repo_url_or_path.startswith("https://") or repo_url_or_path.startswith("http://"):
                 # Extract repo name based on the URL format
-                if type == "github":
-                    # GitHub URL format: https://github.com/owner/repo
-                    repo_name = repo_url_or_path.split("/")[-1].replace(".git", "")
-                elif type == "gitlab":
-                    # GitLab URL format: https://gitlab.com/owner/repo or https://gitlab.com/group/subgroup/repo
-                    # Use the last part of the URL as the repo name
-                    repo_name = repo_url_or_path.split("/")[-1].replace(".git", "")
-                elif type == "bitbucket":
-                    # Bitbucket URL format: https://bitbucket.org/owner/repo
-                    repo_name = repo_url_or_path.split("/")[-1].replace(".git", "")
-                else:
-                    # Generic handling for other Git URLs
-                    repo_name = repo_url_or_path.split("/")[-1].replace(".git", "")
+                repo_name = repo_url_or_path.split("/")[-1].replace(".git", "")
 
                 save_repo_dir = os.path.join(root_path, "repos", repo_name)
 
@@ -630,12 +727,12 @@ class DatabaseManager:
     def prepare_db_index(self, local_ollama: bool = False, excluded_dirs: List[str] = None, excluded_files: List[str] = None) -> List[Document]:
         """
         Prepare the indexed database for the repository.
-        
+
         Args:
             local_ollama (bool): Whether to use local Ollama for embedding (default: False)
             excluded_dirs (List[str], optional): List of directories to exclude from processing
             excluded_files (List[str], optional): List of file patterns to exclude from processing
-            
+
         Returns:
             List[Document]: List of Document objects
         """
@@ -655,7 +752,7 @@ class DatabaseManager:
         # prepare the database
         logger.info("Creating new database...")
         documents = read_all_documents(
-            self.repo_paths["save_repo_dir"], 
+            self.repo_paths["save_repo_dir"],
             local_ollama=local_ollama,
             excluded_dirs=excluded_dirs,
             excluded_files=excluded_files
