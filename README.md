@@ -28,7 +28,7 @@
 
 ## 🚀 Quick Start (Super Easy!)
 
-### Option 1: Using Docker
+### Option 1: Using Docker (Recommended)
 
 ```bash
 # Clone the repository
@@ -49,7 +49,7 @@ docker-compose up
 > - Get a Google API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
 > - Get an OpenAI API key from [OpenAI Platform](https://platform.openai.com/api-keys)
 
-### Option 2: Manual Setup (Recommended)
+### Option 2: Manual Setup
 
 #### Step 1: Set Up Your API Keys
 
