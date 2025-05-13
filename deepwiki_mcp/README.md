@@ -80,14 +80,22 @@ To use DeepWiki MCP with Cursor:
 2. Go to "Integrations" > "MCP Servers"
 3. Add a new MCP server with the following configuration:
    ```json
-   {
-     "mcpServers": {
-       "deepwiki": {
-         "url": "http://localhost:9783/sse",
-         "method": "GET"
-       }
-     }
-   }
+{
+  "mcpServers": {
+    "deepwiki": {
+      "url": "http://localhost:9783/sse",
+      "method": "GET",
+      "description": "DeepWiki MCP server for code repository analysis",
+      "tools": {
+        "AskDeepWiki": {
+          "description": "Ask questions about code repositories",
+          "required_params": ["repository", "query"],
+          "optional_params": ["repo_type", "language", "deep_research"]
+        }
+      }
+    }
+  }
+}
    ```
 4. To test the connection, ask Cursor a question about a repository, like: "Using DeepWiki, can you explain how the agno-agi/agno repository works?"
 
