@@ -24,24 +24,24 @@ services:
       retries: 3
       start_period: 10s
 
-  # deepwiki_mcp:
-  #   build:
-  #     context: .
-  #     dockerfile: deepwiki_mcp/Dockerfile
-  #   ports:
-  #     - "9783:9783"  # External:Internal MCP port
-  #   env_file:
-  #     - .env
-  #   environment:
-  #     - MCP_PORT=9783  # Internal MCP port
-  #     - DEEPWIKI_API_HOST=http://deepwiki:9781  # Internal container communication
-  #     - PYTHONUNBUFFERED=1
-  #   depends_on:
-  #     deepwiki:
-  #       condition: service_healthy
-  #   networks:
-  #     - deepwiki_network
-  #   restart: unless-stopped
+  deepwiki_mcp:
+    build:
+      context: .
+      dockerfile: deepwiki_mcp/Dockerfile
+    ports:
+      - "9783:9783"  # External:Internal MCP port
+    env_file:
+      - .env
+    environment:
+      - MCP_PORT=9783  # Internal MCP port
+      - DEEPWIKI_API_HOST=http://deepwiki:9781  # Internal container communication
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      deepwiki:
+        condition: service_healthy
+    networks:
+      - deepwiki_network
+    restart: unless-stopped
 
 networks:
   deepwiki_network:
