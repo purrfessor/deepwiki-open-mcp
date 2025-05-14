@@ -148,7 +148,10 @@ class DeepWikiClient:
             "repo_url": request.repository,
             "type": request.repo_type,
             "language": request.language,
-            "messages": messages_for_api  # This is explicitly List[Dict[str, str]]
+            "messages": messages_for_api,  # This is explicitly List[Dict[str, str]]
+            # Add model and provider from the QueryRequest object
+            "model": request.model,
+            "provider": request.provider
         }
 
         logger.info(f"DeepWikiClient: Preparing to send api_request. Structure:")
@@ -234,13 +237,19 @@ deepwiki_client = DeepWikiClient()
 @mcp.tool(
     name="AskDeepWiki",
     description="Ask questions about code repositories using DeepWiki: a tool that generates embeddings from the repository code and provides an AI agent chatting interface for asking questions about the codebase."
+    # No direct change to params here yet, as Pydantic model for ask_deepwiki's args will handle it
+    # However, the actual MCP registration might need an update if it's not auto-detecting from type hints + Field defaults
+    # For now, focusing on the Python function signature and logic.
+    # The User Rule in README.md would be the place to document these for the AI user.
 )
 async def ask_deepwiki(
         repository: str = Field(..., description="Repository URL or GitHub repo name (e.g., 'agno-agi/agno')"),
         query: str = Field(..., description="Your question about the repository"),
         repo_type: str = Field(default="github", description="Repository type (github, gitlab, etc.)"),
         language: str = Field(default="en", description="Language for the response"),
-        deep_research: bool = Field(default=False, description="Enable deeper, more thorough analysis")
+        deep_research: bool = Field(default=False, description="Enable deeper, more thorough analysis"),
+        model: Optional[str] = Field(default=None, description="Model to use with the provider. Uses provider's default if None."),
+        provider: Optional[str] = Field(default=None, description="Model provider to use. Uses system default if None.")
 ) -> str:
     """
     Ask DeepWiki questions about repositories.
@@ -251,19 +260,28 @@ async def ask_deepwiki(
         repo_type: Repository type (github, gitlab, etc.)
         language: Language for the response
         deep_research: Whether to conduct a deep research or not
+        model: Optional. Model to use with the provider.
+        provider: Optional. Model provider to use.
 
     Returns:
         String containing DeepWiki's answer
     """
-    logger.info(f"DeepWiki query for repository: {repository}")
+    logger.info(f"DeepWiki query for repository: {repository}, provider: {provider}, model: {model}")
 
-    request_obj = QueryRequest(
-        repository=repository,
-        query=query,
-        repo_type=repo_type,
-        language=language,
-        deep_research=deep_research
-    )
+    # Prepare arguments for QueryRequest, allowing Pydantic defaults to take effect if model/provider are None
+    query_request_args = {
+        "repository": repository,
+        "query": query,
+        "repo_type": repo_type,
+        "language": language,
+        "deep_research": deep_research,
+    }
+    if model is not None:
+        query_request_args["model"] = model
+    if provider is not None:
+        query_request_args["provider"] = provider
+
+    request_obj = QueryRequest(**query_request_args)
 
     # Query the DeepWiki API
     response = await deepwiki_client.query(request_obj)

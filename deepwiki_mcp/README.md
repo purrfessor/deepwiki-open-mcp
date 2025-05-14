@@ -90,7 +90,7 @@ To use DeepWiki MCP with Cursor:
         "AskDeepWiki": {
           "description": "Ask questions about code repositories",
           "required_params": ["repository", "query"],
-          "optional_params": ["repo_type", "language", "deep_research"]
+          "optional_params": ["repo_type", "language", "deep_research", "model", "provider"]
         }
       }
     }
@@ -131,6 +131,8 @@ Ask questions about any code repository and get accurate, context-aware answers.
 | `repo_type` | string | No | Repository type (github, gitlab, etc.). Default: "github" |
 | `language` | string | No | Language for the response. Default: "en" |
 | `deep_research` | boolean | No | Enable deeper, more thorough analysis. Default: false |
+| `model` | string | No | Model to use with the provider. Uses provider's default if not specified. Example: "gemini-2.5-pro-preview-05-06" |
+| `provider` | string | No | Model provider to use. Uses system default if not specified. Example: "google" |
 
 #### Example Request/Response:
 
